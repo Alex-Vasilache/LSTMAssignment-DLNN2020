@@ -3,6 +3,8 @@ Minimal character-level LSTM model. Written by Ngoc Quan Pham
 Code structure borrowed from the Vanilla RNN model from Andreij Karparthy @karparthy.
 BSD License
 """
+import math
+
 import numpy as np
 from random import uniform
 import sys
@@ -104,25 +106,33 @@ def forward(inputs, targets, memory):
         zs[t] = np.row_stack((hs[t - 1], wes[t]))
 
         # compute the forget gate
-        # f = sigmoid(Wf * z + bf)
+        fs[t] = sigmoid(np.dot(Wf, zs[t]) + bf)
 
         # compute the input gate
-        # i = sigmoid(Wi * z + bi)
+        ins[t] = sigmoid(np.dot(Wi, zs[t]) + bi)
+
         # compute the candidate memory
-        # c_ = tanh(Wc * z + bc)
+        c_s[t] = np.tanh(np.dot(Wc, zs[t]) + bc)
 
         # new memory: applying forget gate on the previous memory
         # and then adding the input gate on the candidate memory
         # c_t = f * c_(t-1) + i * c_
+        cs[t] = fs[t] * cs[t-1] + ins[t] * c_s[t]
 
         # output gate
         #o = sigmoid(Wo * z + bo)
+        os[t] = sigmoid(np.dot(Wo, zs[t]) + bo)
 
+        hs[t] = np.tanh(cs[t]) * os[t]
         # DONE LSTM
+
+
         # output layer - softmax and cross-entropy loss
         # unnormalized log probabilities for next chars
-        # softmax for probabilities for next chars
+        ys[t] = np.dot(Why, hs[t]) + by
 
+        # softmax for probabilities for next chars
+        ps[t] = softmax(ys[t])
 
         # label
         ls[t] = np.zeros((vocab_size, batch_size))
@@ -135,6 +145,7 @@ def forward(inputs, targets, memory):
         # loss += -np.log(ps[t][targets[t],0])
 
     # activations = ()
+    activations = (xs, wes, hs, ys, ps, cs, zs, ins, c_s, ls, os, fs)
     memory = (hs[input_length - 1], cs[input_length -1])
 
     return loss, activations, memory
@@ -158,6 +169,7 @@ def backward(activations, clipping=True):
     # back propagation through time starts here
     for t in reversed(range(input_length)):
         # computing the gradients here
+        pass
 
     # clip to mitigate exploding gradients
     if clipping:
@@ -180,9 +192,18 @@ def sample(memory, seed_ix, n):
     ixes = []
     for t in range(n):
 
-        # forward pass again, but we do not have to store the activations now
+        w = np.dot(Wex, x)
+        z = np.row_stack((h, w))
+        f = sigmoid(np.dot(Wf, z) + bf)
+        i = sigmoid(np.dot(Wi, z) + bi)
+        c_ = np.tanh(np.dot(Wc, z) + bc)
+        c = f * c + i * c_
+        o = sigmoid(np.dot(Wo, z) + bo)
+        h = np.tanh(c) * o
+        y = np.dot(Why, h) + by
+        p = softmax(y)
 
-        p = np.exp(y) / np.sum(np.exp(y))
+        #p = np.exp(y) / np.sum(np.exp(y))
         ix = np.random.choice(range(vocab_size), p=p.ravel())
 
         index = ix
