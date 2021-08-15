@@ -169,6 +169,41 @@ def backward(activations, clipping=True):
     # back propagation through time starts here
     for t in reversed(range(input_length)):
         # computing the gradients here
+
+        dy = ps[t] - ls[t]
+
+        dWhy += np.dot(dy, hs[t].T)
+
+        dby += np.sum(dy, axis=-1, keepdims=True)
+
+        dhnext = np.dot(Why.T, dy) + dhnext
+
+        dcnext = np.dot(dtanh(cs[t]) * os[t], dhnext.T) + dcnext
+
+        do = np.dot(np.tanh(cs[t]), dhnext.T)
+        do_pre_sigmoid = dsigmoid(do)
+
+        dWo += np.dot(zs[t], do_pre_sigmoid.T)
+        dbo += np.sum(do_pre_sigmoid, axis=-1, keepdims=True)
+        dzs = np.dot(Wo.T, do_pre_sigmoid)
+
+        dfs = dsigmoid(np.dot(cs[t-1], dcnext.T))
+        dzs += np.dot(Wf.T, dfs)
+        dbf += np.sum(dfs, axis=-1, keepdims=True)
+        dWf += np.dot(zs[t], dfs)
+
+        dins = dsigmoid(np.dot(c_s[t], dcnext.T))
+        dzs += np.dot(Wi.T, dins)
+        dbi += np.sum(dins, axis=-1, keepdims=True)
+        dWi += np.dot(zs[t], dins)
+
+        dc_s = dtanh(np.dot(ins[t], dcnext.T))
+        dzs += np.dot(Wc.T, dc_s)
+        dbc += np.sum(dc_s, axis=-1, keepdims=True)
+        dWc += np.dot(zs[t], dc_s)
+
+        dcnext = np.dot(fs[t], dcnext.T)
+
         pass
 
     # clip to mitigate exploding gradients
