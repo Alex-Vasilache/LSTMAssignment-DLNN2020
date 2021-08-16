@@ -121,7 +121,9 @@ def forward(inputs, targets, memory):
 
         # output gate
         #o = sigmoid(Wo * z + bo)
-        os[t] = sigmoid(np.dot(Wo, zs[t]) + bo)
+        o_pre_sigmoid = np.dot(Wo, zs[t]) + bo
+
+        os[t] = sigmoid(o_pre_sigmoid)
 
         hs[t] = np.tanh(cs[t]) * os[t]
         # DONE LSTM
@@ -173,38 +175,43 @@ def backward(activations, clipping=True):
         dy = ps[t] - ls[t]
 
         dWhy += np.dot(dy, hs[t].T)
-
         dby += np.sum(dy, axis=-1, keepdims=True)
 
         dhnext = np.dot(Why.T, dy) + dhnext
 
-        dcnext = np.dot(dtanh(cs[t]) * os[t], dhnext.T) + dcnext
+        dcnext = dhnext * (dtanh(cs[t]) * os[t]) + dcnext
 
-        do = np.dot(np.tanh(cs[t]), dhnext.T)
+        do = dhnext * np.tanh(cs[t])
         do_pre_sigmoid = dsigmoid(do)
 
-        dWo += np.dot(zs[t], do_pre_sigmoid.T)
+        dWo += np.dot(do_pre_sigmoid, zs[t].T)
         dbo += np.sum(do_pre_sigmoid, axis=-1, keepdims=True)
+        # dL/dzs = dL/do_pre_sig * dp_pre_sig/dzs
         dzs = np.dot(Wo.T, do_pre_sigmoid)
 
-        dfs = dsigmoid(np.dot(cs[t-1], dcnext.T))
+        dfs = dsigmoid(dcnext * cs[t-1])
         dzs += np.dot(Wf.T, dfs)
         dbf += np.sum(dfs, axis=-1, keepdims=True)
-        dWf += np.dot(zs[t], dfs)
+        dWf += np.dot(dfs, zs[t].T)
 
-        dins = dsigmoid(np.dot(c_s[t], dcnext.T))
+        dins = dsigmoid(dcnext * c_s[t])
         dzs += np.dot(Wi.T, dins)
         dbi += np.sum(dins, axis=-1, keepdims=True)
-        dWi += np.dot(zs[t], dins)
+        dWi += np.dot(dins, zs[t].T)
 
-        dc_s = dtanh(np.dot(ins[t], dcnext.T))
+        dc_s = dtanh(dcnext * ins[t])
         dzs += np.dot(Wc.T, dc_s)
         dbc += np.sum(dc_s, axis=-1, keepdims=True)
-        dWc += np.dot(zs[t], dc_s)
+        dWc += np.dot(dc_s, zs[t].T)
 
-        dcnext = np.dot(fs[t], dcnext.T)
+        dcnext = dcnext * fs[t]
+        dhnext = dzs[:len(hs[t-1])]
 
-        pass
+        dwes = dzs[len(hs[t-1]):]
+
+        # dL/dWex = dL/dwes * dwes/dWex
+        # dwes/dWex = xs[t]
+        dWex += np.dot(dwes, xs[t].T)
 
     # clip to mitigate exploding gradients
     if clipping:
