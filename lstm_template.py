@@ -106,7 +106,8 @@ def forward(inputs, targets, memory):
         zs[t] = np.row_stack((hs[t - 1], wes[t]))
 
         # compute the forget gate
-        fs[t] = sigmoid(np.dot(Wf, zs[t]) + bf)
+        fs_presig = np.dot(Wf, zs[t]) + bf
+        fs[t] = sigmoid(fs_presig)
 
         # compute the input gate
         ins[t] = sigmoid(np.dot(Wi, zs[t]) + bi)
@@ -125,7 +126,7 @@ def forward(inputs, targets, memory):
 
         os[t] = sigmoid(o_pre_sigmoid)
 
-        hs[t] = np.tanh(cs[t]) * os[t]
+        hs[t] = os[t] * np.tanh(cs[t])
         # DONE LSTM
 
 
@@ -172,46 +173,48 @@ def backward(activations, clipping=True):
     for t in reversed(range(input_length)):
         # computing the gradients here
 
+        dzs = np.zeros_like(zs[0])
+
         dy = ps[t] - ls[t]
 
         dWhy += np.dot(dy, hs[t].T)
         dby += np.sum(dy, axis=-1, keepdims=True)
-
         dhnext = np.dot(Why.T, dy) + dhnext
-
-        dcnext = dhnext * (dtanh(cs[t]) * os[t]) + dcnext
+        dcnext = dhnext * os[t] * dtanh(cs[t]) + dcnext
 
         do = dhnext * np.tanh(cs[t])
-        do_pre_sigmoid = dsigmoid(do)
-
+        do_pre_sigmoid = do * dsigmoid(os[t])
         dWo += np.dot(do_pre_sigmoid, zs[t].T)
         dbo += np.sum(do_pre_sigmoid, axis=-1, keepdims=True)
-        # dL/dzs = dL/do_pre_sig * dp_pre_sig/dzs
-        dzs = np.dot(Wo.T, do_pre_sigmoid)
+        dzs += np.dot(Wo.T, do_pre_sigmoid)  # dL/dzs = dL/do_pre_sig * dp_pre_sig/dzs
 
-        dfs = dsigmoid(dcnext * cs[t-1])
-        dzs += np.dot(Wf.T, dfs)
-        dbf += np.sum(dfs, axis=-1, keepdims=True)
-        dWf += np.dot(dfs, zs[t].T)
+        dins = dcnext * c_s[t]
+        dins_pre_sigmoid = dins * dsigmoid(ins[t])
+        dWi += np.dot(dins_pre_sigmoid, zs[t].T)
+        dbi += np.sum(dins_pre_sigmoid, axis=-1, keepdims=True)
+        dzs += np.dot(Wi.T, dins_pre_sigmoid)
 
-        dins = dsigmoid(dcnext * c_s[t])
-        dzs += np.dot(Wi.T, dins)
-        dbi += np.sum(dins, axis=-1, keepdims=True)
-        dWi += np.dot(dins, zs[t].T)
+        dc_s = dcnext * ins[t]
+        dc_s_pre_tanh = dc_s * dtanh(c_s[t])
+        dWc += np.dot(dc_s_pre_tanh, zs[t].T)
+        dbc += np.sum(dc_s_pre_tanh, axis=-1, keepdims=True)
+        dzs += np.dot(Wc.T, dc_s_pre_tanh)
 
-        dc_s = dtanh(dcnext * ins[t])
-        dzs += np.dot(Wc.T, dc_s)
-        dbc += np.sum(dc_s, axis=-1, keepdims=True)
-        dWc += np.dot(dc_s, zs[t].T)
+        dfs = dcnext * cs[t - 1]
+        dfs_pre_sigmoid = dfs * dsigmoid(fs[t])  # dL/dfspresig = dL/dfs * dfs/dfspresig
+        dWf += np.dot(dfs_pre_sigmoid, zs[t].T)
+        dbf += np.sum(dfs_pre_sigmoid, axis=-1, keepdims=True)
+        dzs += np.dot(Wf.T, dfs_pre_sigmoid)
 
         dcnext = dcnext * fs[t]
-        dhnext = dzs[:len(hs[t-1])]
+        dhnext = dzs[:hidden_size]
+        dwes = dzs[hidden_size:]
 
-        dwes = dzs[len(hs[t-1]):]
-
-        # dL/dWex = dL/dwes * dwes/dWex
-        # dwes/dWex = xs[t]
         dWex += np.dot(dwes, xs[t].T)
+
+        if clipping:
+            for dparam in [dhnext, dcnext]:
+                np.clip(dparam, -5, 5, out=dparam)
 
     # clip to mitigate exploding gradients
     if clipping:
@@ -241,11 +244,11 @@ def sample(memory, seed_ix, n):
         c_ = np.tanh(np.dot(Wc, z) + bc)
         c = f * c + i * c_
         o = sigmoid(np.dot(Wo, z) + bo)
-        h = np.tanh(c) * o
+        h = o * np.tanh(c)
         y = np.dot(Why, h) + by
-        p = softmax(y)
+        #p = softmax(y)
 
-        #p = np.exp(y) / np.sum(np.exp(y))
+        p = np.exp(y) / np.sum(np.exp(y))
         ix = np.random.choice(range(vocab_size), p=p.ravel())
 
         index = ix
